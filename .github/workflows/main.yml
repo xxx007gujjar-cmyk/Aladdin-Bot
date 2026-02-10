@@ -1,0 +1,25 @@
+name: Market Scanner
+
+on:
+  schedule:
+    - cron: '30 * * * *'  # Har ghante chalega
+  workflow_dispatch:      # Button se chalane ke liye
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+          
+      - name: Install Libraries
+        run: |
+          pip install pandas yfinance requests pytz
+          
+      - name: Run Aladdin Bot
+        run: python main.py
+        
