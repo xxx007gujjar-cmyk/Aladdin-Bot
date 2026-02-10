@@ -1,63 +1,92 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import requests
 from datetime import datetime
 import pytz
 
-# --- CONFIG ---
+# --- ⚙️ USER CONFIGURATION ---
 TOKEN = "8547643505:AAGvC1rstZsC477y86Y_0iP_7akA6WM9zC0"
 CHAT_ID = "1304630088"
 
-SYMBOLS = [
-    "BTC-USD", "EURUSD=X", "GC=F", 
-    "CL=F", "^NSEI", "^NSEBANK"
-]
+SYMBOLS = {
+    # 🇮🇳 India
+    "NIFTY 50": "^NSEI",
+    "BANK NIFTY": "^NSEBANK",
+    "RELIANCE": "RELIANCE.NS",
+    # 🛢️ Commodities
+    "GOLD": "GC=F",
+    "CRUDE OIL": "CL=F",
+    "NATURAL GAS": "NG=F",
+    # ₿ Crypto & Forex
+    "BITCOIN": "BTC-USD",
+    "EUR/USD": "EURUSD=X"
+}
 
-def send_telegram(msg):
+# --- 📡 TELEGRAM SENDER ---
+def send_telegram(message):
     try:
         ist = pytz.timezone('Asia/Kolkata')
-        now = datetime.now(ist).strftime('%I:%M %p')
-        final_msg = f"⏰ **Scan: {now}**\n\n{msg}"
+        now = datetime.now(ist).strftime('%d-%b %I:%M %p')
+        final_msg = f"⏰ **Scan Time:** {now}\n{message}"
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        requests.get(url, params={"chat_id": CHAT_ID, "text": final_msg, "parse_mode": "Markdown"})
-    except Exception as e:
-        print(f"Telegram Fail: {e}")
+        params = {"chat_id": CHAT_ID, "text": final_msg, "parse_mode": "Markdown"}
+        requests.get(url, params=params)
+    except:
+        pass
 
-def get_signal(symbol):
+# --- 🧠 STRATEGY ENGINE ---
+def get_analysis(symbol):
     try:
-        # Ticker method use kar rahe hain jo zyada stable hai
+        # ✅ FIX: Using the working method
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d", interval="1h")
         
-        if df.empty:
-            return 0, "⚠️ Empty Data"
-            
-        # Data Clean karna
-        curr = df['Close'].iloc[-1]
+        if df.empty or len(df) < 20: return None
         
-        # Simple Logic
-        sma = df['Close'].rolling(20).mean().iloc[-1]
+        price = df['Close']
+        current = price.iloc[-1]
         
-        if pd.isna(sma): 
-            return curr, "Wait (Not enough data)"
-            
-        trend = "🟢 UP" if curr > sma else "🔴 DOWN"
-        return curr, trend
+        # 1. Volume Profile (POC)
+        vol = df['Volume']
+        bins = np.linspace(price.min(), price.max(), 50)
+        digitized = np.digitize(price, bins)
+        vp = np.zeros(len(bins))
+        for i in range(len(vol)):
+            idx = digitized[i]
+            if 0 <= idx < len(bins):
+                vp[idx] += vol.iloc[i]
+        poc = bins[np.argmax(vp)]
         
-    except Exception as e:
-        return 0, f"❌ Err: {str(e)}"
+        # 2. Trend Logic (20 SMA)
+        sma = price.rolling(20).mean().iloc[-1]
+        trend = "UP 🟢" if current > sma else "DOWN 🔴"
+        
+        # 3. Signal Generation
+        signal = "WAIT ✋"
+        if current > poc and "UP" in trend: signal = "BUY ✅"
+        elif current < poc and "DOWN" in trend: signal = "SELL ❌"
+        
+        return current, poc, trend, signal
+    except:
+        return None
 
+# --- 🚀 MAIN EXECUTION ---
 if __name__ == "__main__":
-    report = ""
-    print("Starting Scan...")
+    report = "🤖 **ALADDIN-PRO SIGNALS** 🤖\n"
     
-    for sym in SYMBOLS:
-        price, status = get_signal(sym)
-        report += f"📊 *{sym}*\n💰 {price:.2f} | {status}\n\n"
+    for name, sym in SYMBOLS.items():
+        result = get_analysis(sym)
+        if result:
+            curr, poc, trend, sig = result
             
-    if not report:
-        report = "System Error: No report generated."
-        
+            # Report Formatting
+            report += f"\n📊 **{name}**\n"
+            report += f"💰 Price: `{curr:.2f}`\n"
+            report += f"🧲 POC: `{poc:.2f}`\n"
+            report += f"🚦 Trend: {trend}\n"
+            report += f"📢 Signal: **{sig}**\n"
+            report += "➖➖➖➖➖➖➖➖"
+            
     send_telegram(report)
     print("Done")
-    
