@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import requests
-import numpy as np
 from datetime import datetime
 import pytz
 
@@ -19,48 +18,46 @@ def send_telegram(msg):
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist).strftime('%I:%M %p')
         final_msg = f"⏰ **Scan: {now}**\n\n{msg}"
-        
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         requests.get(url, params={"chat_id": CHAT_ID, "text": final_msg, "parse_mode": "Markdown"})
-    except:
-        pass
+    except Exception as e:
+        print(f"Telegram Fail: {e}")
 
-def get_signal(df):
+def get_signal(symbol):
     try:
-        close = df['Close']
-        curr = close.iloc[-1]
+        # Ticker method use kar rahe hain jo zyada stable hai
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="5d", interval="1h")
         
-        # Simple Logic for Test
-        sma = close.rolling(20).mean().iloc[-1]
+        if df.empty:
+            return 0, "⚠️ Empty Data"
+            
+        # Data Clean karna
+        curr = df['Close'].iloc[-1]
+        
+        # Simple Logic
+        sma = df['Close'].rolling(20).mean().iloc[-1]
+        
+        if pd.isna(sma): 
+            return curr, "Wait (Not enough data)"
+            
         trend = "🟢 UP" if curr > sma else "🔴 DOWN"
-        
         return curr, trend
-    except:
-        return 0, "Error"
+        
+    except Exception as e:
+        return 0, f"❌ Err: {str(e)}"
 
 if __name__ == "__main__":
     report = ""
-    print("Scanning...")
+    print("Starting Scan...")
     
     for sym in SYMBOLS:
-        try:
-            # Note: Trying to fix Yahoo blocking by using 'progress=False'
-            df = yf.download(sym, period="5d", interval="1h", progress=False)
+        price, status = get_signal(sym)
+        report += f"📊 *{sym}*\n💰 {price:.2f} | {status}\n\n"
             
-            if not df.empty and len(df) > 5:
-                price, trend = get_signal(df)
-                # Har symbol ka data add karega (Filter hata diya hai)
-                report += f"📊 *{sym}*\n💰 {price:.2f} | {trend}\n\n"
-            else:
-                report += f"⚠️ *{sym}*: No Data (Yahoo Block)\n\n"
-                
-        except Exception as e:
-            report += f"❌ *{sym}*: Error {str(e)}\n\n"
-
-    if report == "":
-        report = "Critical Error: Script ran but generated no output."
+    if not report:
+        report = "System Error: No report generated."
         
     send_telegram(report)
     print("Done")
     
-              
