@@ -1,4 +1,2 @@
-yfinance
-pandas
-requests
-pytz
+  schedule:
+    - cron: '*/15 * * * *'
